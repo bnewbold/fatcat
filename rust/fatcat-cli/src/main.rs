@@ -128,50 +128,32 @@ impl Specifier {
         use Specifier::*;
         match self {
             Release(_) | Work(_) | Creator(_) | Container(_) | File(_) | FileSet(_) | WebCapture(_) | Editgroup(_) | Editor(_) | Changelog(_) => Ok(self),
-            ReleaseLookup(ext_id, key) => {
-                let result = api_client.rt.block_on(match ext_id {
-                    // doi, wikidata, isbn13, pmid, pmcid, core, arxiv, jstor, ark, mag
-                    ReleaseLookupKey::DOI => api_client.api.lookup_release(Some(key), None, None, None, None, None, None, None, None, None, None, None),
-                    ReleaseLookupKey::PMCID => api_client.api.lookup_release(None, None, None, None, Some(key), None, None, None, None, None, None, None),
-                    ReleaseLookupKey::PMID => api_client.api.lookup_release(None, None, None, Some(key), None, None, None, None, None, None, None, None),
-                    ReleaseLookupKey::Arxiv => api_client.api.lookup_release(None, None, None, None, None, None, Some(key), None, None, None, None, None),
-                });
-                if let Ok(fatcat_openapi::LookupReleaseResponse::FoundEntity(model)) = result {
+            ReleaseLookup(_, _) => {
+                if let ApiModel::Release(model) = self.get_from_api(api_client)? {
                     Ok(Specifier::Release(model.ident.unwrap()))
                 } else {
-                    Err(format_err!("some API problem"))
+                    panic!("wrong entity type");
                 }
             },
-            ContainerLookup(ext_id, key) => {
-                let result = api_client.rt.block_on(match ext_id {
-                    ContainerLookupKey::ISSNL => api_client.api.lookup_container(Some(key), None, None, None),
-                });
-                if let Ok(fatcat_openapi::LookupContainerResponse::FoundEntity(model)) = result {
+            ContainerLookup(_, _) => {
+                if let ApiModel::Container(model) = self.get_from_api(api_client)? {
                     Ok(Specifier::Container(model.ident.unwrap()))
                 } else {
-                    Err(format_err!("some API problem"))
+                    panic!("wrong entity type");
                 }
             },
-            CreatorLookup(ext_id, key) => {
-                let result = api_client.rt.block_on(match ext_id {
-                    CreatorLookupKey::Orcid => api_client.api.lookup_creator(Some(key), None, None, None),
-                });
-                if let Ok(fatcat_openapi::LookupCreatorResponse::FoundEntity(model)) = result {
+            CreatorLookup(_, _) => {
+                if let ApiModel::Creator(model) = self.get_from_api(api_client)? {
                     Ok(Specifier::Creator(model.ident.unwrap()))
                 } else {
-                    Err(format_err!("some API problem"))
+                    panic!("wrong entity type");
                 }
             },
-            FileLookup(hash, key) => {
-                let result = api_client.rt.block_on(match hash {
-                    FileLookupKey::SHA1 => api_client.api.lookup_file(Some(key), None, None, None, None),
-                    FileLookupKey::SHA256 => api_client.api.lookup_file(None, Some(key), None, None, None),
-                    FileLookupKey::MD5 => api_client.api.lookup_file(None, None, Some(key), None, None),
-                });
-                if let Ok(fatcat_openapi::LookupFileResponse::FoundEntity(model)) = result {
+            FileLookup(_, _) => {
+                if let ApiModel::File(model) = self.get_from_api(api_client)? {
                     Ok(Specifier::File(model.ident.unwrap()))
                 } else {
-                    Err(format_err!("some API problem"))
+                    panic!("wrong entity type");
                 }
             },
             EditorUsername(_username) => {
@@ -192,13 +174,16 @@ impl Specifier {
                 }
             },
             ReleaseLookup(ext_id, key) => {
-                let result = api_client.rt.block_on(match ext_id {
-                    // doi, wikidata, isbn13, pmid, pmcid, core, arxiv, jstor, ark, mag
-                    ReleaseLookupKey::DOI => api_client.api.lookup_release(Some(key.to_string()), None, None, None, None, None, None, None, None, None, None, None),
-                    ReleaseLookupKey::PMCID => api_client.api.lookup_release(None, None, None, None, Some(key.to_string()), None, None, None, None, None, None, None),
-                    ReleaseLookupKey::PMID => api_client.api.lookup_release(None, None, None, Some(key.to_string()), None, None, None, None, None, None, None, None),
-                    ReleaseLookupKey::Arxiv => api_client.api.lookup_release(None, None, None, None, None, None, Some(key.to_string()), None, None, None, None, None),
-                });
+                use ReleaseLookupKey::*;
+                let (doi, pmcid, pmid, arxiv) = (
+                    if let DOI = ext_id { Some(key.to_string()) } else { None },
+                    if let PMCID = ext_id { Some(key.to_string()) } else { None },
+                    if let PMID = ext_id { Some(key.to_string()) } else { None },
+                    if let Arxiv = ext_id { Some(key.to_string()) } else { None },
+                );
+                // doi, wikidata, isbn13, pmid, pmcid, core, arxiv, jstor, ark, mag
+                let result = api_client.rt.block_on(
+                    api_client.api.lookup_release(doi, None, None, pmid, pmcid, None, arxiv, None, None, None, None, None));
                 if let Ok(fatcat_openapi::LookupReleaseResponse::FoundEntity(model)) = result {
                     Ok(ApiModel::Release(model))
                 } else {
@@ -258,11 +243,15 @@ impl Specifier {
                 }
             },
             FileLookup(hash, key) => {
-                let result = api_client.rt.block_on(match hash {
-                    FileLookupKey::SHA1 => api_client.api.lookup_file(Some(key.to_string()), None, None, None, None),
-                    FileLookupKey::SHA256 => api_client.api.lookup_file(None, Some(key.to_string()), None, None, None),
-                    FileLookupKey::MD5 => api_client.api.lookup_file(None, None, Some(key.to_string()), None, None),
-                });
+                use FileLookupKey::*;
+                let (sha1, sha256, md5) = (
+                    if let SHA1 = hash { Some(key.to_string()) } else { None },
+                    if let SHA256 = hash { Some(key.to_string()) } else { None },
+                    if let MD5 = hash { Some(key.to_string()) } else { None },
+                );
+                let result = api_client.rt.block_on(
+                    api_client.api.lookup_file(sha1, sha256, md5, None, None),
+                );
                 if let Ok(fatcat_openapi::LookupFileResponse::FoundEntity(model)) = result {
                     Ok(ApiModel::File(model))
                 } else {
