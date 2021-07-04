@@ -1,4 +1,3 @@
-
 # Rust caching causing bloat and using too much disk space in public gitlab.com
 # CI process
 #cache:
@@ -59,7 +58,7 @@ unified_test:
     - pipenv run ./tests/cli.sh
     # Just errors
     - pipenv run pylint -E fatcat*.py fatcat_tools fatcat_web tests/*.py
-    - pipenv run flake8 tests/ fatcat_web/ fatcat_tools/ *.py --count --select=E9,F63,F7,F82 --show-source --statistics
+    - pipenv run flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
 
 rust_build_release:
   stage: build
